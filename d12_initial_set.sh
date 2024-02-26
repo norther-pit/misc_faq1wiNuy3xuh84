@@ -25,7 +25,7 @@ fi
 
 
 # Step 3: Add user to sudo group and configure sudoers for passwordless sudo
-USER="your_username"
+USER="zoninp"
 
 if id "$USER" &>/dev/null; then
     /usr/sbin/usermod -aG sudo "$USER"
@@ -36,7 +36,7 @@ else
 fi
 
 # Step 4: Add existing public key to user's authorized_keys
-PUBLIC_KEY_PATH="/home/$USER/key.pub"
+PUBLIC_KEY_PATH="zoninp_bl.pub"
 if [ -f "$PUBLIC_KEY_PATH" ]; then
     su - $USER -c "mkdir -p ~/.ssh && chmod 700 ~/.ssh"
     su - $USER -c "touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
