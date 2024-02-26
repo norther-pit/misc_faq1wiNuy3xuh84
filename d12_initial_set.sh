@@ -32,8 +32,8 @@ if id "$USER" &>/dev/null; then
     echo "User $USER already exists."
 else
     # Create the user without a home directory
-    # Remove '-M' if you want to create a home directory for the user
-    useradd -M "$USER"
+    # Remove -m if you want to create a home directory for the user
+    useradd "$USER"
 fi
 
 if id "$USER" &>/dev/null; then
