@@ -72,5 +72,18 @@ fi
 # Additionally, handle the case where the line might be commented out
 sed -i '/^#PasswordAuthentication/c\PasswordAuthentication no' "$SSH_CONFIG_FILE"
 
-# Reload the SSH service to apply changes
-systemctl reload sshd
+# Reload or start the SSH service to apply changes
+if systemctl is-active --quiet sshd; then
+    echo "SSH service is active, reloading to apply changes."
+    systemctl reload sshd
+else
+    echo "SSH service is not active, attempting to start."
+    systemctl start sshd
+    if systemctl is-active --quiet sshd; then
+        echo "SSH service started successfully."
+    else
+        echo "Failed to start SSH service. Please check the service status manually."
+        exit 1
+    fi
+fi
+
