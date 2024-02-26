@@ -24,8 +24,17 @@ if ! command -v sudo &> /dev/null; then
 fi
 
 
-# Step 3: Add user to sudo group and configure sudoers for passwordless sudo
+# Step 3: create user and add user to sudo group and configure sudoers for passwordless sudo
 USER="zoninp"
+
+# Check if the user already exists
+if id "$USER" &>/dev/null; then
+    echo "User $USER already exists."
+else
+    # Create the user without a home directory
+    # Remove '-M' if you want to create a home directory for the user
+    useradd -M "$USER"
+fi
 
 if id "$USER" &>/dev/null; then
     /usr/sbin/usermod -aG sudo "$USER"
