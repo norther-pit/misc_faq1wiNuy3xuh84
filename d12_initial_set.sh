@@ -6,16 +6,6 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-# Step 1: Append the specified lines to /etc/profile and /root/.bashrc if not already present
-BASH_COMPLETION_SNIPPET="if [ -f /etc/bash_completion ]; then
- . /etc/bash_completion
-fi"
-
-# Check if snippet is not already in /etc/profile and /root/.bashrc then append
-for file in /etc/profile /root/.bashrc; do
-  grep -qxF -- "$BASH_COMPLETION_SNIPPET" "$file" || echo "$BASH_COMPLETION_SNIPPET" >> "$file"
-done
-
 # Step 2: Install sudo if it's not installed
 if ! command -v sudo &> /dev/null; then
     apt-get update
