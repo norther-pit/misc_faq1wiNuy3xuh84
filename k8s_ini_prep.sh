@@ -24,6 +24,9 @@ check_k8s_software() {
   fi
 }
 
+# Flag to track whether to run the kubectl completion setup
+run_kubectl_completion="false"
+
 # Check if Kubernetes software is installed
 if check_k8s_software; then
   echo "Kubernetes software (kubelet, kubeadm, kubectl) is already installed."
@@ -34,6 +37,7 @@ if check_k8s_software; then
     case $reinstall_choice in
       yes|y)
         echo "Proceeding with Kubernetes software reinstallation..."
+        run_kubectl_completion="true"
         break
         ;;
       no|n)
@@ -47,13 +51,33 @@ if check_k8s_software; then
   done
 
   if [ "$reinstall_choice" = "no" ] || [ "$reinstall_choice" = "n" ]; then
-    echo "Skipping Kubernetes software installation and proceeding with the rest of the script."
+    echo "Skipping Kubernetes software installation."
+
+    # Ask whether to skip kubectl completion setup
+    while true; do
+      read -p "Do you want to skip the kubectl completion setup? (yes/no): " skip_kubectl_completion_choice
+      case $skip_kubectl_completion_choice in
+        yes|y)
+          echo "Skipping kubectl completion setup."
+          break
+          ;;
+        no|n)
+          echo "Proceeding with kubectl completion setup."
+          run_kubectl_completion="true"
+          break
+          ;;
+        *)
+          echo "Please enter yes or no."
+          ;;
+      esac
+    done
   else
-    # Proceed with the installation of Kubernetes software
-    install_k8s_software="true"
+    # Reinstallation case: kubectl completion should be executed
+    run_kubectl_completion="true"
   fi
 else
   echo "Kubernetes software is not installed. Proceeding with installation."
+  run_kubectl_completion="true"
   install_k8s_software="true"
 fi
 
@@ -101,54 +125,61 @@ if [ "$install_k8s_software" = "true" ]; then
   systemctl enable --now kubelet
 fi
 
-# Set up kubectl completion for root
-echo "Setting up kubectl completion for root user..."
+# Run kubectl completion setup if required
+if [ "$run_kubectl_completion" = "true" ]; then
+  echo "Setting up kubectl completion..."
 
-# Create ~/.kube directory for root if it doesn't exist
-mkdir -p /root/.kube
+  # Set up kubectl completion for root
+  echo "Setting up kubectl completion for root user..."
 
-# Add kubectl completion for the current shell
-source <(kubectl completion bash)
+  # Create ~/.kube directory for root if it doesn't exist
+  mkdir -p /root/.kube
 
-# Write kubectl completion script to ~/.kube/completion.bash.inc
-kubectl completion bash > /root/.kube/completion.bash.inc
+  # Add kubectl completion for the current shell
+  source <(kubectl completion bash)
 
-# Ensure .bash_profile exists for root and append completion setup
-if [ ! -f /root/.bash_profile ]; then
-  touch /root/.bash_profile
+  # Write kubectl completion script to ~/.kube/completion.bash.inc
+  kubectl completion bash > /root/.kube/completion.bash.inc
+
+  # Ensure .bash_profile exists for root and append completion setup
+  if [ ! -f /root/.bash_profile ]; then
+    touch /root/.bash_profile
+  fi
+
+  grep -qxF 'source /root/.kube/completion.bash.inc' /root/.bash_profile || echo "
+  # kubectl shell completion
+  source /root/.kube/completion.bash.inc
+  " >> /root/.bash_profile
+
+  # Source the updated .bash_profile to apply completion in the current shell
+  source /root/.bash_profile
+
+  # Set up kubectl completion for non-root user $USERNAME
+  echo "Setting up kubectl completion for $USERNAME..."
+
+  # Create ~/.kube directory for the non-root user if it doesn't exist
+  su - $USERNAME -c 'mkdir -p ~/.kube'
+
+  # Add kubectl completion for the current shell for non-root user
+  su - $USERNAME -c 'source <(kubectl completion bash)'
+
+  # Write kubectl completion script to ~/.kube/completion.bash.inc for non-root user
+  su - $USERNAME -c 'kubectl completion bash > ~/.kube/completion.bash.inc'
+
+  # Ensure .bash_profile exists for non-root user and append completion setup
+  su - $USERNAME -c '[ ! -f ~/.bash_profile ] && touch ~/.bash_profile'
+  su - $USERNAME -c 'grep -qxF "source ~/.kube/completion.bash.inc" ~/.bash_profile || echo "
+  # kubectl shell completion
+  source ~/.kube/completion.bash.inc
+  " >> ~/.bash_profile'
+
+  # Source the updated .bash_profile to apply completion in the current shell for non-root user
+  su - $USERNAME -c 'source ~/.bash_profile'
+
+  echo "Kubectl completion setup for both root and $USERNAME is complete."
+else
+  echo "Kubectl completion setup was skipped."
 fi
-
-grep -qxF 'source /root/.kube/completion.bash.inc' /root/.bash_profile || echo "
-# kubectl shell completion
-source /root/.kube/completion.bash.inc
-" >> /root/.bash_profile
-
-# Source the updated .bash_profile to apply completion in the current shell
-source /root/.bash_profile
-
-# Set up kubectl completion for non-root user $USERNAME
-echo "Setting up kubectl completion for $USERNAME..."
-
-# Create ~/.kube directory for the non-root user if it doesn't exist
-su - $USERNAME -c 'mkdir -p ~/.kube'
-
-# Add kubectl completion for the current shell for non-root user
-su - $USERNAME -c 'source <(kubectl completion bash)'
-
-# Write kubectl completion script to ~/.kube/completion.bash.inc for non-root user
-su - $USERNAME -c 'kubectl completion bash > ~/.kube/completion.bash.inc'
-
-# Ensure .bash_profile exists for non-root user and append completion setup
-su - $USERNAME -c '[ ! -f ~/.bash_profile ] && touch ~/.bash_profile'
-su - $USERNAME -c 'grep -qxF "source ~/.kube/completion.bash.inc" ~/.bash_profile || echo "
-# kubectl shell completion
-source ~/.kube/completion.bash.inc
-" >> ~/.bash_profile'
-
-# Source the updated .bash_profile to apply completion in the current shell for non-root user
-su - $USERNAME -c 'source ~/.bash_profile'
-
-echo "Kubectl completion setup for both root and $USERNAME is complete."
 
 # Pause and offer options to exit or execute kubeadm init --dry-run
 while true; do
