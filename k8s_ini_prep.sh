@@ -83,14 +83,28 @@ fi
 
 # Install Kubernetes software if necessary
 if [ "$install_k8s_software" = "true" ]; then
-  # Add Docker's official GPG key
-  apt update
-  apt install -y ca-certificates curl
-  install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
-  chmod a+r /etc/apt/keyrings/docker.asc
 
-  # Add the repository to Apt sources
+
+# sysctl params required by setup, params persist across reboots
+if [ -f /etc/sysctl.d/k8s.conf ]; then
+  echo "/etc/sysctl.d/k8s.conf already exists, proceeding..."
+else
+  cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.ipv4.ip_forward = 1
+EOF
+fi
+
+# Apply sysctl params
+sudo sysctl --system
+
+# Add Docker's official GPG key
+sudo apt update
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+# Add the repository to Apt sources
   echo \
     "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
     $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" > /etc/apt/sources.list.d/docker.list
