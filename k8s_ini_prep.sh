@@ -83,28 +83,14 @@ fi
 
 # Install Kubernetes software if necessary
 if [ "$install_k8s_software" = "true" ]; then
+  # Add Docker's official GPG key
+  apt update
+  apt install -y ca-certificates curl
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+  chmod a+r /etc/apt/keyrings/docker.asc
 
-
-# sysctl params required by setup, params persist across reboots
-if [ -f /etc/sysctl.d/k8s.conf ]; then
-  echo "/etc/sysctl.d/k8s.conf already exists, proceeding..."
-else
-  cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
-net.ipv4.ip_forward = 1
-EOF
-fi
-
-# Apply sysctl params
-sudo sysctl --system
-
-# Add Docker's official GPG key
-sudo apt update
-sudo apt install -y ca-certificates curl
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
-sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-# Add the repository to Apt sources
+  # Add the repository to Apt sources
   echo \
     "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
     $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" > /etc/apt/sources.list.d/docker.list
@@ -137,6 +123,17 @@ sudo chmod a+r /etc/apt/keyrings/docker.asc
   apt-get install -y kubelet kubeadm kubectl
   apt-mark hold kubelet kubeadm kubectl
   systemctl enable --now kubelet
+fi
+
+# sysctl params required by setup, params persist across reboots
+if [ -f /etc/sysctl.d/k8s.conf ]; then
+  echo "/etc/sysctl.d/k8s.conf already exists, proceeding..."
+else
+  echo "Setting up sysctl parameters for Kubernetes..."
+  cat <<EOF > /etc/sysctl.d/k8s.conf
+net.ipv4.ip_forward = 1
+EOF
+  sysctl --system
 fi
 
 # Run kubectl completion setup if required
@@ -195,13 +192,14 @@ else
   echo "Kubectl completion setup was skipped."
 fi
 
-# Pause and offer options to exit or execute kubeadm init --dry-run
+# Offer options for kubeadm init --dry-run, init, or join a cluster
 while true; do
   echo "Choose an option:"
   echo "1) Exit"
   echo "2) Execute 'kubeadm init --dry-run'"
-  echo "3) Join an existing Kubernetes cluster"
-  read -p "Enter your choice [1-3]: " choice
+  echo "3) Execute 'kubeadm init'"
+  echo "4) Join an existing Kubernetes cluster"
+  read -p "Enter your choice [1-4]: " choice
 
   case $choice in
     1)
@@ -211,72 +209,43 @@ while true; do
     2)
       echo "Executing 'kubeadm init --dry-run'..."
       kubeadm init --dry-run
-
-      # After dry-run, offer options to exit or execute kubeadm init for real
-      while true; do
-        echo "Dry-run completed. Choose an option:"
-        echo "1) Exit"
-        echo "2) Execute 'kubeadm init' for real"
-        echo "3) Join an existing Kubernetes cluster"
-        read -p "Enter your choice [1-3]: " post_dryrun_choice
-
-        case $post_dryrun_choice in
-          1)
-            echo "Exiting..."
-            exit 0
-            ;;
-          2)
-            echo "Executing 'kubeadm init'..."
-            kubeadm init
-
-            # After kubeadm init, set up the kubeconfig for root
-            echo "Setting up kubeconfig for root user..."
-            mkdir -p $HOME/.kube
-            cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
-            chown $(id -u):$(id -g) $HOME/.kube/config
-
-            # Set up kubeconfig for the non-root user $USERNAME
-            echo "Setting up kubeconfig for $USERNAME..."
-            su -c 'mkdir -p ~/.kube' $USERNAME
-            cp -i /etc/kubernetes/admin.conf /home/$USERNAME/.kube/config
-            chown $(id -u $USERNAME):$(id -g $USERNAME) /home/$USERNAME/.kube/config
-
-            # Inform the user that everything was done successfully
-            echo "Kubernetes initialization and configuration completed successfully!"
-            exit 0
-            ;;
-          3)
-            echo "Joining an existing Kubernetes cluster..."
-
-            # Prompt user for join command and token
-            read -p "Enter the kubeadm join command (e.g., kubeadm join <control-plane-ip>:6443 --token <token> --discovery-token-ca-cert-hash <hash>): " join_command
-
-            # Execute the provided join command
-            eval $join_command
-
-            # After join, set up the kubeconfig for root
-            echo "Setting up kubeconfig for root user..."
-            mkdir -p $HOME/.kube
-            cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
-            chown $(id -u):$(id -g) $HOME/.kube/config
-
-            # Set up kubeconfig for the non-root user $USERNAME
-            echo "Setting up kubeconfig for $USERNAME..."
-            su -c 'mkdir -p ~/.kube' $USERNAME
-            cp -i /etc/kubernetes/admin.conf /home/$USERNAME/.kube/config
-            chown $(id -u $USERNAME):$(id -g $USERNAME) /home/$USERNAME/.kube/config
-
-            # Inform the user that everything was done successfully
-            echo "Successfully joined the existing Kubernetes cluster and configured kubeconfig!"
-            exit 0
-            ;;
-          *)
-            echo "Invalid choice. Please enter 1, 2, or 3."
-            ;;
-        esac
-      done
       ;;
     3)
+      echo "Executing 'kubeadm init'..."
+      
+      # Execute kubeadm init directly so its output is shown in the terminal
+      if kubeadm init; then
+        # After kubeadm init, set up the kubeconfig for root
+        echo "Setting up kubeconfig for root user..."
+        mkdir -p $HOME/.kube
+        cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+        chown $(id -u):$(id -g) $HOME/.kube/config
+
+        # Set up kubeconfig for the non-root user $USERNAME
+        echo "Setting up kubeconfig for $USERNAME..."
+        su - $USERNAME -c 'mkdir -p ~/.kube'
+        cp -i /etc/kubernetes/admin.conf /home/$USERNAME/.kube/config
+        chown $(id -u $USERNAME):$(id -g $USERNAME) /home/$USERNAME/.kube/config
+
+        echo "Kubernetes initialization and configuration completed successfully!"
+
+        # Capture kubeadm init output again to extract the join command
+        init_output=$(kubeadm token create --print-join-command)
+
+        # Save the extracted part to a file
+        if [ ! -z "$init_output" ]; then
+            echo "$init_output" > ~/kubeadm_join_info.txt
+            echo "The Kubernetes join information has been saved to ~/kubeadm_join_info.txt"
+        else
+            echo "Failed to extract the Kubernetes join information."
+        fi
+
+        exit 0  # End the script after successful kubeadm init
+      else
+        echo "kubeadm init failed. Please check the output for details."
+      fi
+      ;;
+    4)
       echo "Joining an existing Kubernetes cluster..."
 
       # Prompt user for join command and token
@@ -293,16 +262,14 @@ while true; do
 
       # Set up kubeconfig for the non-root user $USERNAME
       echo "Setting up kubeconfig for $USERNAME..."
-      su -c 'mkdir -p ~/.kube' $USERNAME
+      su - $USERNAME -c 'mkdir -p ~/.kube'
       cp -i /etc/kubernetes/admin.conf /home/$USERNAME/.kube/config
       chown $(id -u $USERNAME):$(id -g $USERNAME) /home/$USERNAME/.kube/config
 
-      # Inform the user that everything was done successfully
       echo "Successfully joined the existing Kubernetes cluster and configured kubeconfig!"
-      exit 0
       ;;
     *)
-      echo "Invalid choice. Please enter 1, 2, or 3."
+      echo "Invalid choice. Please enter 1, 2, 3, or 4."
       ;;
   esac
 done
