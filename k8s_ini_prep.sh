@@ -70,6 +70,8 @@ systemctl enable --now kubelet
 
 # Load kubectl completion code for bash into the current shell for root
 echo "Setting up kubectl completion for root user..."
+source <(kubectl completion bash)
+
 kubectl completion bash > /root/.kube/completion.bash.inc
 
 # Ensure .bash_profile exists for root and add kubectl completion
