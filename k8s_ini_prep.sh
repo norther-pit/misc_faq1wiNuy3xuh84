@@ -15,58 +15,91 @@ if ! id "$USERNAME" &>/dev/null; then
   exit 1
 fi
 
-# sysctl params required by setup, params persist across reboots
-if [ -f /etc/sysctl.d/k8s.conf ]; then
-  echo "/etc/sysctl.d/k8s.conf already exists, proceeding..."
+# Function to check if Kubernetes software is installed
+check_k8s_software() {
+  if command -v kubelet &>/dev/null && command -v kubeadm &>/dev/null && command -v kubectl &>/dev/null; then
+    return 0  # All components are installed
+  else
+    return 1  # One or more components are missing
+  fi
+}
+
+# Check if Kubernetes software is installed
+if check_k8s_software; then
+  echo "Kubernetes software (kubelet, kubeadm, kubectl) is already installed."
+
+  # Provide option to skip or reinstall
+  while true; do
+    read -p "Do you want to reinstall the Kubernetes software? (yes/no): " reinstall_choice
+    case $reinstall_choice in
+      yes|y)
+        echo "Proceeding with Kubernetes software reinstallation..."
+        break
+        ;;
+      no|n)
+        echo "Skipping Kubernetes software installation..."
+        break
+        ;;
+      *)
+        echo "Please enter yes or no."
+        ;;
+    esac
+  done
+
+  if [ "$reinstall_choice" = "no" ] || [ "$reinstall_choice" = "n" ]; then
+    echo "Skipping Kubernetes software installation and proceeding with the rest of the script."
+  else
+    # Proceed with the installation of Kubernetes software
+    install_k8s_software="true"
+  fi
 else
-  cat <<EOF > /etc/sysctl.d/k8s.conf
-net.ipv4.ip_forward = 1
-EOF
+  echo "Kubernetes software is not installed. Proceeding with installation."
+  install_k8s_software="true"
 fi
 
-# Apply sysctl params
-sysctl --system
+# Install Kubernetes software if necessary
+if [ "$install_k8s_software" = "true" ]; then
+  # Add Docker's official GPG key
+  apt update
+  apt install -y ca-certificates curl
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+  chmod a+r /etc/apt/keyrings/docker.asc
 
-# Add Docker's official GPG key
-apt update
-apt install -y ca-certificates curl
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
-chmod a+r /etc/apt/keyrings/docker.asc
+  # Add the repository to Apt sources
+  echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
+    $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" > /etc/apt/sources.list.d/docker.list
 
-# Add the repository to Apt sources
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
-  $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" > /etc/apt/sources.list.d/docker.list
+  # Update package index and install containerd
+  apt update
+  apt install -y containerd.io
 
-# Update package index and install containerd
-apt update
-apt install -y containerd.io
+  # Create containerd configuration directory if it doesn't exist
+  mkdir -p /etc/containerd
 
-# Create containerd configuration directory if it doesn't exist
-mkdir -p /etc/containerd
+  # Backup existing containerd configuration if present
+  [ -f /etc/containerd/config.toml ] && cp /etc/containerd/config.toml /etc/containerd/config.toml.bac
 
-# Backup existing containerd configuration if present
-[ -f /etc/containerd/config.toml ] && cp /etc/containerd/config.toml /etc/containerd/config.toml.bac
+  # Generate default containerd configuration
+  containerd config default > /etc/containerd/config.toml
 
-# Generate default containerd configuration
-containerd config default > /etc/containerd/config.toml
+  # Edit containerd configuration to use systemd cgroup
+  sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
 
-# Edit containerd configuration to use systemd cgroup
-sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+  # Restart containerd to apply changes
+  systemctl restart containerd
 
-# Restart containerd to apply changes
-systemctl restart containerd
-
-# Install Kubernetes v1.31 packages
-apt update
-apt install -y apt-transport-https ca-certificates curl gpg
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /' > /etc/apt/sources.list.d/kubernetes.list
-apt-get update
-apt-get install -y kubelet kubeadm kubectl
-apt-mark hold kubelet kubeadm kubectl
-systemctl enable --now kubelet
+  # Install Kubernetes v1.31 packages
+  apt update
+  apt install -y apt-transport-https ca-certificates curl gpg
+  curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /' > /etc/apt/sources.list.d/kubernetes.list
+  apt-get update
+  apt-get install -y kubelet kubeadm kubectl
+  apt-mark hold kubelet kubeadm kubectl
+  systemctl enable --now kubelet
+fi
 
 # Set up kubectl completion for root
 echo "Setting up kubectl completion for root user..."
