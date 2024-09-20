@@ -68,13 +68,19 @@ apt-get install -y kubelet kubeadm kubectl
 apt-mark hold kubelet kubeadm kubectl
 systemctl enable --now kubelet
 
-# Load kubectl completion code for bash into the current shell for root
+# Set up kubectl completion for root
 echo "Setting up kubectl completion for root user..."
+
+# Create ~/.kube directory for root if it doesn't exist
+mkdir -p /root/.kube
+
+# Add kubectl completion for the current shell
 source <(kubectl completion bash)
 
+# Write kubectl completion script to ~/.kube/completion.bash.inc
 kubectl completion bash > /root/.kube/completion.bash.inc
 
-# Ensure .bash_profile exists for root and add kubectl completion
+# Ensure .bash_profile exists for root and append completion setup
 if [ ! -f /root/.bash_profile ]; then
   touch /root/.bash_profile
 fi
@@ -84,22 +90,32 @@ grep -qxF 'source /root/.kube/completion.bash.inc' /root/.bash_profile || echo "
 source /root/.kube/completion.bash.inc
 " >> /root/.bash_profile
 
-# Load kubectl completion for the current shell of root user
+# Source the updated .bash_profile to apply completion in the current shell
 source /root/.bash_profile
 
-# Load kubectl completion code for bash into the current shell for non-root user $USERNAME
+# Set up kubectl completion for non-root user $USERNAME
 echo "Setting up kubectl completion for $USERNAME..."
-su -c 'kubectl completion bash > ~/.kube/completion.bash.inc' $USERNAME
 
-# Ensure .bash_profile exists for the non-root user and add kubectl completion
-su -c '[ ! -f ~/.bash_profile ] && touch ~/.bash_profile' $USERNAME
-su -c 'grep -qxF "source ~/.kube/completion.bash.inc" ~/.bash_profile || echo "
+# Create ~/.kube directory for the non-root user if it doesn't exist
+su - $USERNAME -c 'mkdir -p ~/.kube'
+
+# Add kubectl completion for the current shell for non-root user
+su - $USERNAME -c 'source <(kubectl completion bash)'
+
+# Write kubectl completion script to ~/.kube/completion.bash.inc for non-root user
+su - $USERNAME -c 'kubectl completion bash > ~/.kube/completion.bash.inc'
+
+# Ensure .bash_profile exists for non-root user and append completion setup
+su - $USERNAME -c '[ ! -f ~/.bash_profile ] && touch ~/.bash_profile'
+su - $USERNAME -c 'grep -qxF "source ~/.kube/completion.bash.inc" ~/.bash_profile || echo "
 # kubectl shell completion
 source ~/.kube/completion.bash.inc
-" >> ~/.bash_profile' $USERNAME
+" >> ~/.bash_profile'
 
-# Load kubectl completion for the current shell of the non-root user
-su -c 'source ~/.bash_profile' $USERNAME
+# Source the updated .bash_profile to apply completion in the current shell for non-root user
+su - $USERNAME -c 'source ~/.bash_profile'
+
+echo "Kubectl completion setup for both root and $USERNAME is complete."
 
 # Pause and offer options to exit or execute kubeadm init --dry-run
 while true; do
