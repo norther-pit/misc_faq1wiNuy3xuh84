@@ -33,7 +33,7 @@ else
 fi
 
 # Step 4: Add existing public key to user's authorized_keys
-PUBLIC_KEY_PATH="zoninp_bl.pub" # Adjust the path as necessary
+PUBLIC_KEY_PATH="zoninp_bl_2409.pub" # Adjust the path as necessary
 USER_HOME=$(getent passwd "$USER" | cut -d: -f6)
 
 if [ -f "$PUBLIC_KEY_PATH" ]; then
