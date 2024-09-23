@@ -229,6 +229,10 @@ while true; do
 
         echo "Kubernetes initialization and configuration completed successfully!"
 
+        # Apply the Calico network plugin
+        echo "Applying Calico network plugin..."
+        kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+        
         # Capture kubeadm init output again to extract the join command
         init_output=$(kubeadm token create --print-join-command)
 
